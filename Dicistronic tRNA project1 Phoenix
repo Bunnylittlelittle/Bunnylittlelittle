@@ -1,0 +1,15 @@
+### Codes for RNA fasta data processing
+### HPC linux environment
+### 
+###
+### Go to director
+mkdir PhD/tRNAproject/Fasta
+cd home/a1709557/PhD/tRNAproject/Fasta
+### Load modules
+module load  arch/arch/haswell
+module load fastqc
+module list
+### the loaded modules will be shown
+###  Download fasta data from SRA database
+wget ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/SRR/SRR(first three digits)/SRR(all digits)/SRR(all digits).sra
+###
