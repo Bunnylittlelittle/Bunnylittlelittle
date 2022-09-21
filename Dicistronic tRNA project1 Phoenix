@@ -1,6 +1,6 @@
 ### Codes for RNA fasta data processing
 ### HPC linux environment
-### 
+### Work flow: download srr data, fastqc for quality control, AdapterRevomal for trimming, HISAT2 for alignment. SAMTool for what purpose?
 ###
 ### Go to director
 mkdir PhD/tRNAproject/Fasta
@@ -10,6 +10,24 @@ module load  arch/arch/haswell
 module load fastqc
 module list
 ### the loaded modules will be shown
-###  Download fasta data from SRA database
-wget ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/SRR/SRR(first three digits)/SRR(all digits)/SRR(all digits).sra
-###
+### load SRAToolkit module
+module load SRAToolkit
+### download SRA sequence data
+prefetch SRR000001
+### Now I have RNA seq row data from SRA
+### I need to use bin bash, upload works in phoenix to run fastqc as quality visualise for my RNA seq row data
+### Creat a jobfastqc.sh file which can be opened by Notepad. In the jobfastqc.sh, write this:
+
+#!/bin/bash
+#SBATCH -p batch
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --time=03:01:00
+#SBATCH --mem=16GB
+
+# Notification configuration
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=a1709557@adelaide.edu.au
+
+module load FastQC
+
