@@ -22,12 +22,127 @@ prefetch SRR000001
 #SBATCH -p batch
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --time=03:01:00
-#SBATCH --mem=16GB
-
-# Notification configuration
-#SBATCH --mail-type=ALL
+#SBATCH --time=0-16:00:00
+#SBATCH --mem=32GB
+#SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=a1709557@adelaide.edu.au
 
+#put this script into new folder(by hand) and make new diractory
+
+mkdir RawSRA RawFastq 02_trimming 03_align -p 03_align/04_sort
+module load SRA-Toolkit
+
+fasterq-dump --split-files --split-3 /hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/SRR*.sra -O /hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/RawFastq/
+
+#compress .fastq file into .fastq.gz file
+gzip -r /hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/RawFastq/
+#trimming
+module load AdapterRemoval
 module load FastQC
+
+#threads=4
+data=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/RawFastq/
+TRIM=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/02_trimming/
+
+#Trimming
+echo "Strating adapter trimming"
+
+for FQGZ in $data/SRR105*.sra_1.fastq.gz
+do
+AdapterRemoval --file1 $FQGZ \
+--file2 ${FQGZ/_1/_2} \
+--output1 $TRIM/$(basename ${FQGZ/_1/Trimmed1}) \
+--output2 $TRIM/$(basename ${FQGZ/_1/Trimmed2}) \
+--gzip;
+done
+
+echo "THE TRIMMING IS DONE"
+mkdir -p /hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/02_trimming/fastqc
+echo "Now FastQC analysis"
+fastqc -o $TRIM/fastqc $TRIM/*
+echo "FastQC is done"
+
+
+#alignment
+module purge
+module load HISAT2 
+module load SAMtools
+
+REF=/hpcfs/users/a1709557/Vitis_vinifera/ref/Vitis_vinifera.PN40024.v4.dna.toplevel.fa
+
+data=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/02_trimming
+base=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/ref_hisat2
+ALIGN=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/03_align
+
+echo "Starting Alignment"
+
+# Firstly we need to make a hisat2 genome reference
+
+mkdir -p $base
+
+hisat2-build $REF $base/VV_PNV4_genome
+
+# Now we can align SRR10519013.sraTrimmed2.fastq.gz
+for FQGZ in $data/SRR105*.sraTrimmed1.fastq.gz
+ do
+   hisat2 -x $base/VV_PNV4_genome -p 3 \
+          -1 $FQGZ \
+          -2 ${FQGZ/Trimmed1/Trimmed2} | \
+
+samtools view -bS - > ${FQGZ}.hisat2_PNV4.bam
+#Is saving int he current directory, and samtools is saving in bam (-b) and -S ignore compatibility
+done
+echo "End Alignment"
+mv $data/SRR105*.bam $ALIGN/
+
+#Sorting
+
+
+module purge
+module load SAMtools
+
+data=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/03_align
+
+echo "Starting sorting"
+for i in {10518892..10518894}
+do
+ samtools sort ${data}/SRR${i}.sraTrimmed1.fastq.gz.hisat2_PNV4.bam \
+ -o ${data}/04_sort/SRR${i}_.sorted.bam
+done
+
+echo "End sorting"
+#index
+module purge
+module load SAMtools
+
+data=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/03_align/04_sort
+echo "Starting indexing"
+
+for i in ${data}/SRR{10518892..10518894}_.sorted.bam;
+
+do
+
+echo "indexing: "$i
+
+samtools index $i $i".bai"
+
+done
+
+echo "End index"
+
+
+module purge 
+module load SAMtools
+
+data=/hpcfs/users/a1709557/Master_degree_folder/PastorData/EE1/03_align/04_sort
+
+
+echo "Starting merging"
+
+samtools merge -f ${data}/merged/EE1.sorted.merged.bam ${data}/SRR105*_.sorted.bam
+
+echo "End merging"
+
+
+
 
