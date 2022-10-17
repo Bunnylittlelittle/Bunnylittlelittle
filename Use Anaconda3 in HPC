@@ -1,0 +1,14 @@
+###how to use Anaconda3 to create an environment in HPC to install softwares
+module load Anaconda3
+source activate   #activate an anachonda source, \
+
+#after this I will enter a base environment, with a (base) in front of -bash-4.2
+
+conda create -n tRNA  # create an environment named tRNA
+conda activate tRNA  # enter the tRNA environment
+source activate tRNA # after I created tRAN environment, next time I just use\
+
+#this line to enter it instate of use source activate.
+
+conda install -c bioconda transcan-se #install tRNAscan-SE softwares.
+conda env list # list of activated environment
