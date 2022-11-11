@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH -p batch
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -c 30
+#SBATCH --time=0-1:00:00
+#SBATCH --mem=16GB
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=a1709557@adelaide.edu.au
+module load Anaconda3
+source activate tRNA
+
+tRNAscan-SE -E -b /hpcfs/users/a1709557/Vitis_vinifera/ref/cabsavtRNA.bed /hpcfs/users/a1709557/Vitis_vinifera/ref/VITVvi_vCabSauv08_v1.1.pseudomolecules.all.fasta
