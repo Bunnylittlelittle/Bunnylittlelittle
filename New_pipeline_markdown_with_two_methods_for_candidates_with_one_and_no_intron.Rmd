@@ -1,7 +1,7 @@
 ---
 title: "DiRT_PN/Mgt"
 output: html_document
-date: "2022-11-30"
+date: "2023-01-12"
 ---
 
 ```{r setup, include=FALSE}
@@ -22,6 +22,7 @@ library(tidyverse)
 library(biomaRt)
 library(Rsamtools)
 library(data.table)
+library(GeneOverlap)
 ```
 ## Step1: fine tRNA-gene combination from reference genome
 # construct proper gene list for anaylsis
@@ -29,8 +30,8 @@ library(data.table)
 gene.info.from.gff <- read_delim("C:/AAAStudy/PhD/Bioinformatics/GrapeGenomeRef/Vitis_vinifera.PN40024.v4.55.gff3", delim = "\t", col_names = FALSE) %>%
   dplyr::select(X1,X4,X5,X9,X7,X3) %>%
   set_colnames(c("gene.chr", "gene.start", "gene.end", "gene.id", "gene.strand", "gene.biotype")) %>%
-  mutate(#gene.chr = paste0('chr', gene.chr),
-         gene.strand = ifelse(gene.strand == 1,"+","-")) %>%  # make it consistant with other data for strand symbol and Chr names, if the format alread matched, this line of code needs to set as comment 
+  #mutate(#gene.chr = paste0('chr', gene.chr),
+  #       gene.strand = ifelse(gene.strand == 1,"+","-")) %>%  # make it consistant with other data for strand symbol and Chr names, if the format alread matched, this line of code needs to set as comment 
   arrange(gene.chr, gene.start)
 CDS.info.sorted <- gene.info.from.gff %>%
   filter(gene.biotype == "CDS") %>% # keep the type of annotation that you are interested to explore
@@ -117,7 +118,8 @@ tRNA.CDS.combo <- closest_tRNA_CDS %>%
          gene.id = as.character(gene.id)) %>% 
   split(f = seq(1, nrow(.))) %>% # break up the dataframe to one col one dataframe 
   lapply(function(x){mutate(x, id = paste(sort(c(x$tRNA.id, x$gene.id)), collapse = "_"))}) %>%
-  bind_rows() 
+  bind_rows() %>% group_by(gene.id) %>% slice_min(n = 1, interval.length)%>%
+    ungroup()
 ```
 # filter commonly expressed tRNA and gene 
 ## setup the bundary for the whole genome (safty net!)
@@ -192,6 +194,7 @@ tRNA.expressed.AllSample <- rowSums(dplyr::select(tRNA.counts,6:9) >= 1) == 4
 sum(tRNA.expressed.AllSample) 
 common.tRNA <- tRNA.counts[tRNA.expressed.AllSample,]
 tRNA.expressed.CDS.combo <- filter(tRNA.CDS.combo, tRNA.id %in% common.tRNA$tRNA_id) 
+#131 
 ```
 ## build up the ```GRange``` by ```makeGRangesFromDataFrame``` for gene
 ```{r}
@@ -211,7 +214,7 @@ GRange_gene <- makeGRangesFromDataFrame(gene.counts,
                                         strand.field = "gene.strand",
                                         starts.in.df.are.0based = FALSE)
 ```
-## Count reads for each gene GRange from ```bam``` files. Take more than 2 hours, try bioparalle 
+## Count reads for each gene GRange from ```bam``` files. Take more than 2 hours, try bioparalle package.
 ```{r}
 counts <- lapply (bamfiles,function(bamfile){
   baifile <- paste0(bamfile,".bai")
@@ -237,6 +240,8 @@ gene.expressed.AllSample <- rowSums(dplyr::select(gene.counts, 6:9) >= 1) == 4 #
 sum(gene.expressed.AllSample) 
 common.gene <- gene.counts[gene.expressed.AllSample,]
 tRNA.CDS.expressed.combo <- filter(tRNA.expressed.CDS.combo, gene.id %in% common.gene$gene.id)
+
+#86
 ```
 ####How many candidates in tRNA.CDS.expressed.combo has no intron or one intron:
 #extract exon information from plant ensembl
@@ -746,7 +751,6 @@ final.stats.parid <- do.call("rbind", list(intron.closest.up.data,
                                            intergenic.data)) %>% 
   unique() %>%
   arrange(id)
-
 ```
 
 ```{r}
@@ -2341,5 +2345,54 @@ continuous.coverage.final.no.intron <- left_join(coverage.list.final.no.intron,c
 ```{r}
 write.table(continuous.coverage.final.no.intron,
             file = "C:/AAAStudy/PhD/Bioinformatics/Pastor/result/EE_Berry_with_no_intron.xlsx",
+            quote = FALSE, sep = "\t", row.names = FALSE)
+```
+#put results from three types(two and more introns, one intron, no intron) together
+```{r}
+continuous.coverage.final.all <- rbind(continuous.coverage.final, continuous.coverage.final.one.intron, continuous.coverage.final.no.intron) %>% filter(combined.continu.cov == TRUE)
+```
+#estimate if the tRNA is in UTR 
+```{r}
+# combine continuous.coverage.final.all with tRNA coordinates
+Dicistronic.all.tRNA <- left_join(continuous.coverage.final.all,tRNA.CDS.expressed.combo, by ="id") %>%
+   dplyr::select(id, chr.x, start, end, gene.id.x, gene.start, gene.end, gene.strand, tRNA.id, tRNA.start, tRNA.end, tRNA.strand, tRNA.upstream.x, tRNAFirst.x, interval.length, continu.cov, combined.continu.cov) %>%
+  set_colnames(c("id", "chr", "start", "end", "gene.id", "gene.start", "gene.end", "gene.strand", "tRNA.id", "tRNA.start", "tRNA.end", "tRNA.strand", "tRNA.upstream", "tRNAFirst", "interval.length", "continu.cov", "combined.continu.cov"))
+#bind candidates with UTR information
+Dicistronic.UTR5.info <- UTR5.info %>% filter(gene.id %in% Dicistronic.all.tRNA$gene.id) 
+Dicistronic.UTR3.info <- UTR3.info %>% filter(gene.id %in% Dicistronic.all.tRNA$gene.id) 
+#Remember that until now the gene start and end in dicistronic information are CDS start end coordinate, not the real gene start/end coordinate, so I will make real gene coordinate.
+Dicistronic.gene.info <- left_join(Dicistronic.UTR5.info, Dicistronic.UTR3.info, by = "gene.id")
+Dicistronic.gene.startend <- Dicistronic.gene.info %>% mutate(start = ifelse(gene.strand.x == '+', start.x,
+                                                                             ifelse(gene.strand.x == '-', start.y, start.x)),
+                                                                end = ifelse(gene.strand.x == '+', end.y,
+                                                                             ifelse(gene.strand.x == '-', end.x, end.y)),
+                                                              gene.length = end - start + 1) %>%
+  dplyr::select(chr.x, gene.id, start, end, gene.strand.y, gene.length) %>%
+  group_by(gene.id) %>% slice_max(n = 1, gene.length)%>%ungroup() %>% 
+  unique()
+
+gene.info <- getBM(attributes=c("chromosome_name", "start_position", "end_position",
+                                "ensembl_gene_id", "strand", "gene_biotype"), mart=m)  %>%
+  set_colnames(c("gene.chr", "gene.start", "gene.end", "gene.id", "gene.strand", "gene.biotype")) %>%
+  mutate(#gene.chr = paste0('chr', gene.chr),
+         gene.strand = ifelse(gene.strand == 1,"+","-")) %>%  # make it consistant with other data for strand symbol and Chr names, if the format alread matched, this line of code needs to set as comment 
+  arrange(gene.chr, gene.start)
+
+gene.info.sorted <- gene.info %>%
+  filter(gene.biotype == "protein_coding") %>% # keep the type of annotation that you are interested to explore
+  arrange(gene.chr, gene.start) 
+Dicistronic.gene <- gene.info.sorted %>% filter(gene.id %in% continuous.coverage.final.all$gene.id) %>% unique()
+
+# estimate if tRNA overlaps with UTR
+Dicistronic.tRNA.gene.coordinate <- left_join(Dicistronic.all.tRNA, Dicistronic.gene, by = "gene.id") %>%
+  dplyr::select(id, chr, start, end, gene.id, gene.start.y, gene.end.y, gene.strand.x, tRNA.id, tRNA.start, tRNA.end, tRNA.strand, tRNA.upstream, tRNAFirst, interval.length, continu.cov, combined.continu.cov) %>%
+  set_colnames(c("id", "chr", "start", "end", "gene.id", "gene.start", "gene.end", "gene.strand", "tRNA.id", "tRNA.start", "tRNA.end", "tRNA.strand", "tRNA.upstream", "tRNAFirst", "interval.length", "continu.cov", "combined.continu.cov")) %>%  mutate(tRNA.overlap.UTR = ifelse(tRNAFirst == 'TRUE' & gene.start < tRNA.end, TRUE,
+                                    ifelse(tRNAFirst == 'FALSE'& gene.end > tRNA.start, "TRUE","FALSE" ))) %>%
+  dplyr::select(id, chr, start, end, gene.id, gene.start, gene.end, gene.strand, tRNA.id, tRNA.start, tRNA.end, tRNA.strand, tRNA.upstream, tRNAFirst, interval.length, continu.cov, combined.continu.cov, tRNA.overlap.UTR)
+```
+# export results
+```{r}
+write.table(Dicistronic.tRNA.gene.coordinate,
+            file = "C:/AAAStudy/PhD/Bioinformatics/Pastor/result/EE_Berry_Final_Result.xlsx",
             quote = FALSE, sep = "\t", row.names = FALSE)
 ```
