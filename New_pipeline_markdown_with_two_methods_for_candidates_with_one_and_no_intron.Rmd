@@ -2261,15 +2261,15 @@ tTestResults.final.intron.nearby <- tRnaToGene.intron.nearby$ids %>%
     )
     
     # Compare the introns
-    if (all(c("intron_one_nearby", "intron_two_nearby") %in% colnames(cov))) {
-      tTest <- t.test(log(cov[,"intron_two_nearby"]+1),
-                      log(cov[,"intron_one_nearby"]+1),
+    if (all(c("intron_twon_nearby", "intron_one_nearby") %in% colnames(cov))) {
+      tTest <- t.test(log(cov[,"intron_one_nearby"]+1),
+                      log(cov[,"intron_two_nearby"]+1),
                       paired = TRUE)
       out %<>%
         bind_rows(
           data_frame(ids = x,
                      id = combo,
-                     comparison = "intron_one_nearbyVsintron_one_nearby",
+                     comparison = "intron_two_nearbyVsintron_one_nearby",
                      df = tTest$parameter, # degree of freedom
                      V = tTest$statistic,
                      p = tTest$p.value)
