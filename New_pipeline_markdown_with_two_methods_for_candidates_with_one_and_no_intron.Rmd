@@ -2021,9 +2021,12 @@ intron.info.all.gene %<>% mutate(intron.id = paste0(intron.id,".", intron.num.al
 
 #=========================================================================#
 
-#gene introns from nearby gene
+#gene introns from nearby gene, as we just want to use the gene mimic intron 1and 2, we do not need the intron in real order, so I filtered out the duplication intron from multiple transcripts of same one nearby gene.
 intron.info.no.intron.with.nearby <- left_join(closest_gene.no.intron_gene, intron.info.all.gene, by = "gene.id" ) %>%
-  dplyr::select(chr.x, intron.start, intron.end, intron.id, no.intron.id, gene.strand )
+  dplyr::select(chr.x, intron.start, intron.end, intron.id, no.intron.id, gene.strand ) %>%
+  group_by(intron.id) %>% slice_min(n = 1, intron.start)%>%ungroup() %>% 
+  unique()
+
 ```
 
 ```{r}
@@ -2038,7 +2041,7 @@ res <- sapply(list.gene.id.nearby,function(g){
 res <- unlist(res)
 
 intron.one.for.stats.nearby <- intron.info.no.intron.with.nearby[res,]
-intron.one.for.stats.nearby <- data_frame(chr = intron.one.for.stats.nearby$chr,
+intron.one.for.stats.nearby <- data_frame(chr = intron.one.for.stats.nearby$chr.x,
                                           start = intron.one.for.stats.nearby$intron.start,
                                           end = intron.one.for.stats.nearby$intron.end,
                                           strand = intron.one.for.stats.nearby$gene.strand,
@@ -2062,7 +2065,7 @@ res <- lapply(list.gene.id.nearby,function(g){
 res <- unlist(res)
 
 intron.two.for.stats.nearby <- intron.info.no.intron.with.nearby[res,]
-intron.two.for.stats.nearby <- data_frame(chr = intron.two.for.stats.nearby$chr,
+intron.two.for.stats.nearby <- data_frame(chr = intron.two.for.stats.nearby$chr.x,
                                               start = intron.two.for.stats.nearby$intron.start,
                                               end = intron.two.for.stats.nearby$intron.end,
                                               strand = intron.two.for.stats.nearby$gene.strand,
@@ -2305,7 +2308,7 @@ tTestResults.final.intron.nearby <- tRnaToGene.intron.nearby$ids %>%
 # for FDR
 intergeic.sign.final.intron.nearby <- tTestResults.final.intron.nearby$IntergenicVsintron_one_nearby %>% 
   filter(FDR < 0.05, V < 0) 
-intron.not.sign.final.intron.nearby <- tTestResults.final.intron.nearby$intron_one_nearbyVsintron_one_nearby %>% 
+intron.not.sign.final.intron.nearby <- tTestResults.final.intron.nearby$intron_two_nearbyVsintron_one_nearby %>% 
   filter((FDR < 0.05 & V > 0) | FDR >=0.05)
 final.sign.intron.nearby <- intersect(intron.not.sign.final.intron.nearby$id,intergeic.sign.final.intron.nearby$id)
 #-----------------------------------------------------------------#
