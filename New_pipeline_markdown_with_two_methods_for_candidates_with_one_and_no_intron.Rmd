@@ -2225,9 +2225,19 @@ Dicistronic.tRNA.gene.coordinate <- left_join(Dicistronic.all.tRNA, Dicistronic.
   set_colnames(c("id", "chr", "start", "end", "gene.id", "gene.start", "gene.end", "gene.strand", "tRNA.id", "tRNA.start", "tRNA.end", "tRNA.strand", "tRNA.upstream", "tRNAFirst", "interval.length", "continu.cov", "combined.continu.cov")) %>%  mutate(tRNA.overlap.UTR = ifelse(tRNAFirst == 'TRUE' & gene.start < tRNA.end, TRUE,
                                     ifelse(tRNAFirst == 'FALSE'& gene.end > tRNA.start, "TRUE","FALSE" ))) %>%
   dplyr::select(id, chr, start, end, gene.id, gene.start, gene.end, gene.strand, tRNA.id, tRNA.start, tRNA.end, tRNA.strand, tRNA.upstream, tRNAFirst, interval.length, continu.cov, combined.continu.cov, tRNA.overlap.UTR)
+  tRNA.UTR.final <- table(Dicistronic.tRNA.gene.coordinate$tRNA.overlap.UTR == "TRUE")
+#get a table show how many candidates have tRNA overlap utr how many not
+tRNA_in_UTR_all <- data.frame(
+  "tRNA.UTR.tgene.combo" = tRNA.UTR.tgene.combo,
+  "tRNA.UTR.tgene.expressed.combo" = tRNA.UTR.tgene.expressed.combo,
+  "tRNA.UTR.final" = tRNA.UTR.final
+)
 ```
 # export results
 ```{r}
+write.table(tRNA_in_UTR_all,
+            file = "C:/tRNA_in_UTR_all.xlsx",
+            quote = FALSE, sep = "\t", row.names = FALSE)
 write.table(Dicistronic.tRNA.gene.coordinate,
             file = "C:/Final_Result.xlsx",
             quote = FALSE, sep = "\t", row.names = FALSE)
