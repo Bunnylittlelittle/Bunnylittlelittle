@@ -1,0 +1,171 @@
+---
+title: "Calculate_mpileup"
+author: "Fei_Zheng"
+date: "2023-05-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+library(data.table)
+library(GenomicRanges)
+library(GenomicAlignments)
+library(GenomicFeatures)
+library(rtracklayer)
+library(magrittr)
+library(plyr)
+library(reshape2)
+library(tidyverse)
+library(biomaRt)
+library(Rsamtools)
+library(data.table)
+library(GeneOverlap)
+```
+
+```{r}
+###make SNPs database for genomic data
+# Read the first file
+palmata_SNP_table <- read.table("C:/AAAStudy/Yang_method/SRR2015348_varscansnp.txt", header = TRUE, stringsAsFactors = FALSE) 
+palmata_SNP_table$VarFreq <- as.numeric(gsub("%", "", palmata_SNP_table$VarFreq))
+# Read the second file
+girdiana_SNP_table <- read.table("C:/AAAStudy/Yang_method/SRR2015347_varscansnp.txt", header = TRUE, stringsAsFactors = FALSE) 
+girdiana_SNP_table$VarFreq <- as.numeric(gsub("%", "", girdiana_SNP_table$VarFreq))
+#lets do the 4th criteria first: frequency >90%
+filtered_palmata_SNP_table <- palmata_SNP_table[palmata_SNP_table$VarFreq > 90, ]
+filtered_girdiana_SNP_table <- girdiana_SNP_table[girdiana_SNP_table$VarFreq > 90, ]
+#make two dataframes, one with the same snps between two cultivars, one with different snps between two cultivars
+#firstly, we need to identify snps at same position
+#create a new column that combine the chr and position
+filtered_palmata_SNP_table$Chr_Position <- paste(filtered_palmata_SNP_table$Chrom, filtered_palmata_SNP_table$Position, sep = "_")
+filtered_girdiana_SNP_table$Chr_Position <- paste(filtered_girdiana_SNP_table$Chrom, filtered_girdiana_SNP_table$Position, sep = "_")
+#bind two dataframes into two new dataframes, one with snps from same position, one with different
+common_position_palmata <- left_join(filtered_palmata_SNP_table,filtered_girdiana_SNP_table, by = "Chr_Position")
+#in this common_position dataframe, it contains snps from same position, and snps specific to palmata(the girdiana side is NA)
+common_position_girdiana <- left_join(filtered_girdiana_SNP_table,filtered_palmata_SNP_table, by = "Chr_Position")
+#in this common_position dataframe, it contains snps from same position, and snps specific to girdiana(the palmata side is NA)
+#secondly, we need to filter the same snps in both of these common_position dataframes
+#this is palmata SNPs database:
+filtered_common_position_palmata <-  common_position_palmata[common_position_palmata$VarAllele.x != common_position_palmata$VarAllele.y | is.na(common_position_palmata$VarAllele.y), ]
+#this is girdiana SNPs database:
+filtered_common_position_girdiana <- common_position_girdiana[common_position_girdiana$VarAllele.x != common_position_girdiana$VarAllele.y | is.na(common_position_girdiana$VarAllele.y), ]
+#952845 same SNPs between Palmata and Girdiana. 3383295 SNPs specific to Girdiana, 1377985 SNPs specific to Palmata.
+```
+
+```{r}
+###Make SNPs database for RNA seq data
+# RNA-Seq of V. girdiana scion of graft V. girdiana (scion) / V. palmata
+RNA_girdiana_girdiana_on_palmata_SNP_table <- read.table("D:/Vitis/Yang_paper/SRR2015295_varscansnp.txt", header = TRUE, stringsAsFactors = FALSE)
+#RNA-Seq of V. girdiana rootstock of graft V. palmata (scion) / V. girdiana (rootstock)
+RNA_girdiana_palmata_on_girdiana_SNP_table <- read.table("D:/Vitis/Yang_paper/SRR2015358_varscansnp.txt", header = TRUE, stringsAsFactors = FALSE)
+#RNA-Seq of V. palmata scion of graft V. palmata (scion) / V. girdiana (rootstock)
+RNA_palmata_palmata_on_girdiana_SNP_table <- read.table("D:/Vitis/Yang_paper/SRR2015359_varscansnp.txt", header = TRUE, stringsAsFactors = FALSE)
+#RNA-Seq of V. palmata rootstock of graft V. girdiana (scion) / V. palmata (rootstock)
+RNA_palmata_girdiana_on_palmata_SNP_table <- read.table("D:/Vitis/Yang_paper/SRR2015360_varscansnp.txt", header = TRUE, stringsAsFactors = FALSE)
+###combine chr and position to get a chr_position as genomic data
+#RNA-Seq of V. girdiana scion of graft V. girdiana (scion) / V. palmata
+RNA_girdiana_girdiana_on_palmata_SNP_table$Chr_Position <- paste(RNA_girdiana_girdiana_on_palmata_SNP_table$Chrom, RNA_girdiana_girdiana_on_palmata_SNP_table$Position, sep = "_")
+#RNA-Seq of V. girdiana rootstock of graft V. palmata (scion) / V. girdiana (rootstock)
+RNA_girdiana_palmata_on_girdiana_SNP_table$Chr_Position <- paste(RNA_girdiana_palmata_on_girdiana_SNP_table$Chrom, RNA_girdiana_palmata_on_girdiana_SNP_table$Position, sep = "_")
+#RNA-Seq of V. palmata scion of graft V. palmata (scion) / V. girdiana (rootstock)
+RNA_palmata_palmata_on_girdiana_SNP_table$Chr_Position <- paste(RNA_palmata_palmata_on_girdiana_SNP_table$Chrom, RNA_palmata_palmata_on_girdiana_SNP_table$Position, sep = "_")
+#RNA-Seq of V. palmata rootstock of graft V. girdiana (scion) / V. palmata (rootstock)
+RNA_palmata_girdiana_on_palmata_SNP_table$Chr_Position <- paste(RNA_palmata_girdiana_on_palmata_SNP_table$Chrom, RNA_palmata_girdiana_on_palmata_SNP_table$Position, sep = "_")
+```
+
+```{r}
+###comparing with two SNPs database table:
+#comparing RNA-Seq of V. girdiana scion of graft V. girdiana (scion) / V. palmata to V. palmata snps
+filtered_GScion_PRoot_mobile_from_palmata_root <- RNA_girdiana_girdiana_on_palmata_SNP_table[RNA_girdiana_girdiana_on_palmata_SNP_table$Chr_Position %in% filtered_common_position_palmata$Chr_Position, ]
+#20958 snps from scion match with root genotype
+#comparing RNA-Seq of V. girdiana rootstock of graft V. palmata (scion) / V. girdiana (rootstock) to V. palmata snps
+filtered_GRoot_PScion_mobile_from_palmata_scion <- RNA_girdiana_palmata_on_girdiana_SNP_table[RNA_girdiana_palmata_on_girdiana_SNP_table$Chr_Position %in% filtered_common_position_palmata$Chr_Position, ]
+#24409 snps from root match with scion genotype
+#comparing RNA-Seq of V. palmata scion of graft V. palmata (scion) / V. girdiana (rootstock) to V. girdiana snps
+filtered_PScion_GRoot_mobile_from_girdiana_root <- RNA_palmata_palmata_on_girdiana_SNP_table[RNA_palmata_palmata_on_girdiana_SNP_table$Chr_Position %in% filtered_common_position_girdiana$Chr_Position, ]
+#98816 snps from scion match with root genotype
+#comparing RNA-Seq of V. palmata rootstock of graft V. girdiana (scion) / V. palmata (rootstock) to V. girdiana snps
+filtered_PRoot_GScion_mobile_from_girdiana_scion <- RNA_palmata_girdiana_on_palmata_SNP_table[RNA_palmata_girdiana_on_palmata_SNP_table$Chr_Position %in% filtered_common_position_girdiana$Chr_Position, ]
+#79207 snps from root match with scion genotype
+```
+
+```{r}
+#Now assign SNPs to gene
+#the snps database I need for SRR2015295: filtered_GScion_PRoot_mobile_from_palmata_root
+#build GRanges for gene coordinates dataframe 
+# Assuming you have a data frame called 'filtered_GScion_PRoot_mobile_from_palmata_root' with columns 'Chrom' and 'Position'
+snp_ranges <- GRanges(seqnames = filtered_GScion_PRoot_mobile_from_palmata_root$Chrom, IRanges(start = filtered_GScion_PRoot_mobile_from_palmata_root$Position, 
+                                                end = filtered_GScion_PRoot_mobile_from_palmata_root$Position + 1))
+# Assuming you have a data frame called 'gene.information' with columns 'gene.chr', 'gene.chr', and 'gene.chr'
+gene_ranges <- GRanges(seqnames = gene.information$gene.chr, IRanges(start = gene.information$gene.start, end = gene.information$gene.end))
+#get overlap
+overlap <- findOverlaps(snp_ranges, gene_ranges)
+overlapping_genes <- gene.information[subjectHits(overlap), ] %>%
+  unique()
+##???8605 mobile genes???
+```
+
+```{r}
+#How many expressed genes in total?
+gene.counts <- gene.information %>%
+  dplyr::select(gene.chr, gene.start, gene.end, gene.id, gene.strand) %>%
+  unique()
+
+# build up GRange for the gene
+GRange_gene <- makeGRangesFromDataFrame(gene.counts,
+                                        keep.extra.columns = TRUE,
+                                        ignore.strand = TRUE,
+                                        seqinfo = Seqinfo,
+                                        seqnames.field = "gene.chr",
+                                        start.field = "gene.start",
+                                        end.field = "gene.end",
+                                        strand.field = "gene.strand",
+                                        starts.in.df.are.0based = FALSE) 
+```
+## Count reads for each gene GRange from ```bam``` files. Take more than 2 hours
+```{r}
+counts <- lapply (bamfiles,function(bamfile){
+  baifile <- paste0(bamfile,".bai")
+  bam.input <- readGAlignments(bamfile,
+                               index = baifile,
+                               use.names = TRUE,
+                               param = ScanBamParam(which = GRange_gene))
+  
+  countOverlaps(GRange_gene, bam.input,
+                maxgap=-1L, minoverlap=10L,
+                type=c("any"),
+                select=c("all"),
+                ignore.strand=TRUE)
+})
+names(counts) <- SampleName
+counts <- do.call(cbind,counts) # this can take long time
+gene.counts <- cbind(gene.counts,counts)
+```
+## filter commonly expressed gene
+```{r}
+# filter expressed gene 
+gene.expressed.AllSample <- rowSums(dplyr::select(gene.counts, 6) >= 1) == 1 # same requirement as above 
+sum(gene.expressed.AllSample) 
+common.gene <- gene.counts[gene.expressed.AllSample,]
+tRNA.CDS.expressed.combo <- filter(tRNA.expressed.CDS.combo, gene.id %in% common.gene$gene.id)
+# How many tRNA in UTR
+tRNA.in.expressed.UTR <- left_join(tRNA.CDS.expressed.combo, tRNA.CDS.combo.tRNA.UTR.overlap,by = "gene.id")
+tRNA.UTR.tgene.expressed.combo <- table(tRNA.in.expressed.UTR$tRNA.overlap.UTR == "TRUE")
+```
+
+
+```{r}
+#Now assign SNPs to dicistronic transcripts
+#the snps database I need for SRR2015295: filtered_GScion_PRoot_mobile_from_palmata_root
+#build GRanges for dicistronic transcripts coordinates dataframe 
+# Assuming you have a data frame called 'Dicistronic.tRNA.gene.coordinate' with columns 'chromosome', 'start', and 'end'
+SRR2015295_candidates_ranges <- GRanges(seqnames = Dicistronic.tRNA.gene.coordinate$chr, IRanges(start = Dicistronic.tRNA.gene.coordinate$start, end = Dicistronic.tRNA.gene.coordinate$end))
+#get overlap
+SRR2015295_candidates_overlap <- findOverlaps(snp_ranges, SRR2015295_candidates_ranges)
+SRR2015295_candidates_overlapping <- Dicistronic.tRNA.gene.coordinate[subjectHits(SRR2015295_candidates_overlap), ] %>%
+  unique()
+#11 in 31 dicistronic carry snps specific to donor tissue.
+```
